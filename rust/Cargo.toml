@@ -1,0 +1,22 @@
+[package]
+name = "ha-s3-media-core"
+version = "0.1.0"
+edition = "2021"
+description = "Rust/PyO3 S3 access layer for the Home Assistant S3 Media integration"
+license = "MIT"
+repository = "https://github.com/mbruno/ha-s3-media"
+
+[lib]
+name = "ha_s3_media_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.141.0"
+tokio = { version = "1", features = ["full"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

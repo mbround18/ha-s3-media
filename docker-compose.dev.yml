@@ -1,0 +1,27 @@
+# Local RustFS for developing against a real S3-compatible endpoint.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   S3_MEDIA_LIVE_ENDPOINT=http://127.0.0.1:19000 uv run pytest
+#
+# Then add a config entry with:
+#   endpoint URL       http://127.0.0.1:19000
+#   region             us-east-1
+#   access key         testkey
+#   secret key         testsecret123
+#   path-style         on
+
+services:
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: rustfs-dev
+    ports:
+      - "19000:9000"
+    environment:
+      RUSTFS_ACCESS_KEY: testkey
+      RUSTFS_SECRET_KEY: testsecret123
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes:
+      - rustfs-data:/data
+
+volumes:
+  rustfs-data:

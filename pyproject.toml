@@ -1,0 +1,39 @@
+# Development environment for the S3 Media integration.
+# The shipped code lives in custom_components/s3_media (Python) and rust/ (the
+# ha-s3-media-core extension module). This file only wires up `uv` for local
+# development and CI.
+
+[project]
+name = "ha-s3-media-dev"
+version = "0.1.0"
+description = "Development environment for the Home Assistant S3 Media integration"
+requires-python = ">=3.12"
+dependencies = [
+  "homeassistant>=2024.12.0",
+  "ha-s3-media-core",
+]
+
+[dependency-groups]
+dev = [
+  "maturin>=1.7,<2.0",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.24",
+  "pytest-homeassistant-custom-component>=0.13.150",
+  "ruff>=0.6",
+]
+
+[tool.uv.sources]
+ha-s3-media-core = { path = "rust", editable = true }
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "BLE", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components", "tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

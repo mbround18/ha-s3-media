@@ -1,0 +1,18 @@
+# Rust
+/rust/target/
+# Cargo.lock is committed: this crate ships as a binary wheel
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.so
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Home Assistant dev instance
+/config/

@@ -1,0 +1,13 @@
+{
+  "domain": "s3_media",
+  "name": "S3 Media",
+  "codeowners": ["@mbruno"],
+  "config_flow": true,
+  "dependencies": ["http", "media_source"],
+  "documentation": "https://github.com/mbruno/ha-s3-media",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/mbruno/ha-s3-media/issues",
+  "requirements": ["ha-s3-media-core==0.1.0"],
+  "version": "0.1.0"
+}

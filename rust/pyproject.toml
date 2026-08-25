@@ -1,0 +1,25 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ha-s3-media-core"
+version = "0.1.0"
+description = "Rust/PyO3 S3 access layer for the Home Assistant S3 Media integration"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Michael Bruno", email = "michael.bruno1337@gmail.com" }]
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[project.urls]
+Homepage = "https://github.com/mbruno/ha-s3-media"
+
+[tool.maturin]
+module-name = "ha_s3_media_core"
+manifest-path = "Cargo.toml"
+features = ["pyo3/extension-module"]
+strip = true
