@@ -16,7 +16,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mbruno/ha-s3-media"
+Homepage = "https://github.com/mbround18/ha-s3-media"
 
 [tool.maturin]
 module-name = "ha_s3_media_core"

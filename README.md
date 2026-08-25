@@ -33,7 +33,7 @@ The S3 layer is a Rust extension module (`ha-s3-media-core`) built with
 
 ### HACS (recommended)
 
-1. HACS → **Custom repositories** → add `https://github.com/mbruno/ha-s3-media`
+1. HACS → **Custom repositories** → add `https://github.com/mbround18/ha-s3-media`
    with category **Integration**.
 2. Install **S3 Media**, then restart Home Assistant.
 3. **Settings → Devices & Services → Add Integration → S3 Media**.

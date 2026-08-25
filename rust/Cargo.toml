@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Rust/PyO3 S3 access layer for the Home Assistant S3 Media integration"
 license = "MIT"
-repository = "https://github.com/mbruno/ha-s3-media"
+repository = "https://github.com/mbround18/ha-s3-media"
 
 [lib]
 name = "ha_s3_media_core"
