@@ -15,6 +15,9 @@ jobs:
     name: ${{ matrix.platform }} / ${{ matrix.target }}
     runs-on: ubuntu-latest
     strategy:
+      # One architecture failing should not cancel the other five; a partial
+      # matrix tells you which targets are broken in a single run.
+      fail-fast: false
       matrix:
         platform: [manylinux, musllinux]
         target: [x86_64, aarch64, armv7]

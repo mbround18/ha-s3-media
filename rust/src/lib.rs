@@ -11,6 +11,7 @@ use aws_config::{BehaviorVersion, Region};
 use aws_sdk_s3::config::{Credentials, SharedCredentialsProvider};
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::Client;
+use aws_smithy_http_client::tls::{rustls_provider::CryptoMode, Provider as TlsProvider};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -83,7 +84,15 @@ impl S3MediaClient {
 
         let client = py.detach(|| {
             runtime.block_on(async {
-                let mut loader = aws_config::defaults(BehaviorVersion::latest());
+                // The SDK's default HTTPS client is only wired up by the
+                // `default-https-client` feature, which drags in aws-lc. Build
+                // the ring-backed one explicitly instead.
+                let http_client = aws_smithy_http_client::Builder::new()
+                    .tls_provider(TlsProvider::Rustls(CryptoMode::Ring))
+                    .build_https();
+
+                let mut loader = aws_config::defaults(BehaviorVersion::latest())
+                    .http_client(http_client.clone());
 
                 if let Some(region) = region.clone() {
                     loader = loader.region(Region::new(region));
@@ -97,7 +106,8 @@ impl S3MediaClient {
                 }
 
                 let shared = loader.load().await;
-                let mut builder = aws_sdk_s3::config::Builder::from(&shared);
+                let mut builder =
+                    aws_sdk_s3::config::Builder::from(&shared).http_client(http_client);
 
                 if let Some(endpoint) = endpoint_url.clone() {
                     builder = builder.endpoint_url(endpoint);
