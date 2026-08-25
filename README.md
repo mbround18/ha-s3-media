@@ -111,6 +111,7 @@ custom_components/s3_media/
   const.py          keys, defaults, extension → mime-type tables
   proxy.py          proxy view, with HTTP Range passed through to S3
   media_source.py   browse and resolve
+  brand/            icon and logo for the HACS/Home Assistant UI
 rust/
   src/lib.rs        S3MediaClient: list, presign, head, get
 ```
@@ -158,4 +159,4 @@ uv run maturin build --release --manifest-path rust/Cargo.toml
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

@@ -14,7 +14,7 @@
           "force_path_style": "Use path-style addressing"
         },
         "data_description": {
-          "endpoint_url": "The full base URL of your server, e.g. http://rustfs.local:9000. Leave empty only for AWS S3.",
+          "endpoint_url": "The full base URL of your server, including scheme and port. Leave empty only for AWS S3.",
           "region": "Self-hosted endpoints usually accept us-east-1.",
           "prefix": "Optional folder inside the bucket to use as the root, e.g. photos/",
           "force_path_style": "Required by RustFS and most other self-hosted endpoints."
