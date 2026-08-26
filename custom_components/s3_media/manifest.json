@@ -1,13 +1,21 @@
 {
   "domain": "s3_media",
   "name": "S3 Media",
-  "codeowners": ["@mbround18"],
+  "codeowners": [
+    "@mbround18"
+  ],
   "config_flow": true,
-  "dependencies": ["http", "media_source"],
+  "dependencies": [
+    "http",
+    "media_source"
+  ],
   "documentation": "https://github.com/mbround18/ha-s3-media",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/mbround18/ha-s3-media/issues",
-  "requirements": ["ha-s3-media-core==0.0.4"],
-  "version": "0.0.5"
+  "requirements": [
+    "ha-s3-media-core==0.0.5",
+    "Pillow>=10.0.0"
+  ],
+  "version": "0.1.0"
 }

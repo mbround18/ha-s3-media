@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+from io import BytesIO
 
 import pytest
 from homeassistant.components import media_source
@@ -85,11 +86,15 @@ async def live_entry(hass: HomeAssistant):
 
 
 async def test_browse_lists_the_real_photo(hass: HomeAssistant, live_entry) -> None:
-    """Browsing reaches the real store and finds the object."""
+    """Browsing reaches the real store and finds the object.
+
+    Other tests in this module add their own photos to the same folder, so this
+    checks for presence rather than an exact listing.
+    """
     folder = await media_source.async_browse_media(
         hass, f"media-source://s3_media/{ENTRY_ID}|Taiwan 2026/"
     )
-    assert [child.title for child in folder.children] == ["20260316_183853.jpg"]
+    assert "20260316_183853.jpg" in [child.title for child in folder.children]
 
 
 async def test_proxy_streams_a_multi_megabyte_photo(
@@ -107,6 +112,86 @@ async def test_proxy_streams_a_multi_megabyte_photo(
     assert response.headers["Content-Type"] == "image/jpeg"
     assert len(body) == len(PHOTO_BYTES)
     assert body == PHOTO_BYTES
+
+
+async def test_thumbnail_uses_the_embedded_preview(
+    hass: HomeAssistant, live_entry, hass_client_no_auth
+) -> None:
+    """A tile comes from the EXIF preview, without reading the whole photo.
+
+    Proven by content: the response is byte-identical to the embedded JPEG, so
+    it cannot have come from decoding and downscaling the original.
+    """
+    from tests.test_thumbnail import make_jpeg, with_exif_thumbnail
+
+    embedded = make_jpeg(160, 120, (7, 8, 9))
+    photo = with_exif_thumbnail(embedded) + b"\x00" * (4 * 1024 * 1024)
+
+    boto3 = pytest.importorskip("boto3")
+    from botocore.config import Config
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=ENDPOINT,
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY,
+        region_name="us-east-1",
+        config=Config(s3={"addressing_style": "path"}),
+    )
+    key = "Taiwan 2026/with_exif.jpg"
+    s3.put_object(Bucket=BUCKET, Key=key, Body=photo)
+
+    folder = await media_source.async_browse_media(
+        hass, f"media-source://s3_media/{ENTRY_ID}|Taiwan 2026/"
+    )
+    tile = next(c for c in folder.children if c.title == "with_exif.jpg")
+
+    client = await hass_client_no_auth()
+    response = await client.get(tile.thumbnail)
+    body = await response.read()
+
+    assert response.status == 200
+    assert response.headers["Content-Type"] == "image/jpeg"
+    assert body == embedded
+    assert len(body) < len(photo) / 100
+
+
+async def test_thumbnail_downscales_when_there_is_no_preview(
+    hass: HomeAssistant, live_entry, hass_client_no_auth
+) -> None:
+    """Photos without an embedded preview fall back to decoding and shrinking."""
+    from PIL import Image
+
+    from tests.test_thumbnail import make_jpeg
+
+    boto3 = pytest.importorskip("boto3")
+    from botocore.config import Config
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=ENDPOINT,
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY,
+        region_name="us-east-1",
+        config=Config(s3={"addressing_style": "path"}),
+    )
+    original = make_jpeg(2400, 1800)
+    key = "Taiwan 2026/no_exif.jpg"
+    s3.put_object(Bucket=BUCKET, Key=key, Body=original)
+
+    folder = await media_source.async_browse_media(
+        hass, f"media-source://s3_media/{ENTRY_ID}|Taiwan 2026/"
+    )
+    tile = next(c for c in folder.children if c.title == "no_exif.jpg")
+
+    client = await hass_client_no_auth()
+    response = await client.get(tile.thumbnail)
+    body = await response.read()
+
+    assert response.status == 200
+    with Image.open(BytesIO(body)) as image:
+        assert max(image.size) == 512
+    assert len(body) < len(original) / 5
 
 
 async def test_proxy_range_against_the_real_store(

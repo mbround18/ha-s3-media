@@ -16,7 +16,9 @@ The S3 layer is a Rust extension module (`ha-s3-media-core`) built with
 
 - **Browse** the bucket as folders. S3 common prefixes become directories.
 - **Play** images, video and audio inline. Anything else is hidden.
-- **Thumbnails** for images in the grid view.
+- **Thumbnails** generated small, not the full photo. Where a camera embedded a
+  preview in the EXIF header, that is used directly, so a tile costs kilobytes
+  rather than megabytes; otherwise the image is downscaled once and cached.
 - **Multiple buckets** — add one config entry per bucket/prefix pair.
 - **Two delivery modes** — presigned URLs straight from the object store, or
   streaming through Home Assistant when the endpoint is not reachable from the
@@ -110,7 +112,8 @@ custom_components/s3_media/
   client.py         async wrapper; every Rust call goes via the executor
   config_flow.py    setup, reauth and options flows
   const.py          keys, defaults, extension → mime-type tables
-  proxy.py          proxy view: streams objects in chunks, honours Range
+  proxy.py          media and thumbnail views: streaming, caching, Range
+  thumbnail.py      EXIF preview extraction and downscaling
   media_source.py   browse and resolve
   brand/            icon and logo for the HACS/Home Assistant UI
 rust/
@@ -119,8 +122,19 @@ rust/
 
 The Rust methods block on an embedded Tokio runtime with the GIL released, so
 Python calls them through `hass.async_add_executor_job` and the event loop
-stays free. Listing a folder is one executor hop; so is presigning a whole
-folder's worth of thumbnails (`presign_get_many`), rather than one per file.
+stays free. Listing a folder is one executor hop.
+
+Serving an object opens a single GET and pulls the body a chunk at a time
+(`open_object`), so memory does not scale with file size and the browser starts
+receiving bytes immediately.
+
+Thumbnails matter more than they look. A folder of twenty 5 MB photos was
+moving ~100 MB to paint tiles a few hundred pixels wide. Now a tile is a small
+JPEG: taken from the camera's embedded EXIF preview when there is one, which
+needs only the first 128 KB of the file and no decoding at all, and otherwise
+decoded and downscaled once, then cached on disk under `.storage`. Both routes
+send an ETag derived from the object's own, so revisiting a folder is a page of
+304s.
 
 ## Development
 
@@ -155,6 +169,8 @@ uv run maturin build --release --manifest-path rust/Cargo.toml
 
 - Folders are listed live on every browse; there is no cache. Large buckets
   browse as fast as your endpoint lists them.
+- The thumbnail cache grows without bound and is never pruned. Each entry is a
+  few KB, so a large library is still megabytes, but nothing evicts it.
 - HEIC, HEIF and TIFF are listed as photos, but most browsers cannot display
   them, so they render as broken tiles. Convert them, or leave them out of the
   prefix you point Home Assistant at.

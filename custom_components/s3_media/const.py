@@ -31,6 +31,8 @@ DEFAULT_THUMBNAILS: Final = True
 
 # Path of the proxy view, formatted with the config entry id.
 PROXY_URL_FORMAT: Final = "/api/s3_media/{entry_id}/{path}"
+# The version is the object's ETag: it makes a cached thumbnail unambiguous.
+THUMBNAIL_URL_FORMAT: Final = "/api/s3_media_thumb/{entry_id}/{path}?v={version}"
 
 # Which kinds of media a bucket exposes. Selecting only "photo" makes the
 # source behave as a photo album: videos and audio in the same bucket are

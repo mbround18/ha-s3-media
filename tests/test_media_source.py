@@ -8,6 +8,7 @@ auth -- the parts a browser is fussy about.
 
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import patch
 
 import pytest
@@ -31,7 +32,18 @@ from custom_components.s3_media.const import (
 # A folder name with a space, because that is what broke in the field.
 FOLDER = "Taiwan 2026/"
 PHOTO = f"{FOLDER}20260302_152911.jpg"
-PHOTO_BYTES = b"\xff\xd8\xff\xe0" + b"J" * 4096
+
+
+def _make_photo(width: int = 64, height: int = 64) -> bytes:
+    """A real JPEG, so thumbnail generation has something to decode."""
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (width, height), (120, 90, 60)).save(buffer, "JPEG")
+    return buffer.getvalue()
+
+
+PHOTO_BYTES = _make_photo(320, 240)
 
 ENTRY_DATA = {
     CONF_BUCKET: "photos",
@@ -41,6 +53,29 @@ ENTRY_DATA = {
     CONF_ENDPOINT_URL: "http://rustfs.local:9000",
     CONF_FORCE_PATH_STYLE: True,
 }
+
+
+class FakeStream:
+    """Stands in for the Rust ObjectStream."""
+
+    def __init__(self, data, content_range=None, etag="abc123"):
+        self._data = data
+        self._position = 0
+        self.content_type = "binary/octet-stream"
+        self.content_range = content_range
+        self.content_length = len(data)
+        self.etag = etag
+        self.last_modified = 1787704372.0
+
+    def next_chunk(self):
+        if self._position >= len(self._data):
+            return None
+        chunk = self._data[self._position : self._position + 65536]
+        self._position += len(chunk)
+        return chunk
+
+    def close(self):
+        self._position = len(self._data)
 
 
 class FakeS3Client:
@@ -85,6 +120,20 @@ class FakeS3Client:
             "last_modified": 1787704372.0,
             "etag": "abc123",
         }
+
+    def open_object(self, key, range=None):  # mirrors the Rust signature
+        if key != PHOTO:
+            raise RuntimeError(f"NoSuchKey: {key}")
+        if range:
+            start, end = range.removeprefix("bytes=").split("-")
+            start = int(start)
+            end = int(end) if end else len(PHOTO_BYTES) - 1
+            end = min(end, len(PHOTO_BYTES) - 1)
+            return FakeStream(
+                PHOTO_BYTES[start : end + 1],
+                f"bytes {start}-{end}/{len(PHOTO_BYTES)}",
+            )
+        return FakeStream(PHOTO_BYTES)
 
     def get_object(self, key, range=None):  # mirrors the Rust signature
         if key != PHOTO:
@@ -204,14 +253,14 @@ async def test_proxy_view_serves_a_large_photo(
     """
     big = b"\xff\xd8\xff\xe0" + b"P" * (8 * 1024 * 1024)
 
-    def big_get(key, range=None):  # mirrors the Rust signature
-        return (big, "binary/octet-stream", None, len(big))
+    def big_open(key, range=None):  # mirrors the Rust signature
+        return FakeStream(big)
 
     uri = f"media-source://s3_media/{setup_entry.entry_id}|{PHOTO}"
     resolved = await media_source.async_resolve_media(hass, uri, None)
 
     bucket = hass.data[DOMAIN][setup_entry.entry_id]
-    with patch.object(bucket._client, "get_object", big_get):
+    with patch.object(bucket._client, "open_object", big_open):
         client = await hass_client_no_auth()
         response = await client.get(resolved.url)
         body = await response.read()
@@ -267,3 +316,125 @@ async def test_photo_only_hides_other_media(hass: HomeAssistant) -> None:
         "photo.jpg",
         "photo.png",
     ]
+
+
+async def test_thumbnail_url_points_at_the_thumbnail_route(
+    hass: HomeAssistant, setup_entry
+) -> None:
+    """Tiles are served by the thumbnail view, stamped with the object's ETag."""
+    folder = await media_source.async_browse_media(
+        hass, f"media-source://s3_media/{setup_entry.entry_id}|{FOLDER}"
+    )
+    thumbnail = folder.children[0].thumbnail
+
+    assert thumbnail.startswith(f"/api/s3_media_thumb/{setup_entry.entry_id}/")
+    assert "v=abc123" in thumbnail
+    assert "authSig=" in thumbnail
+
+
+async def test_thumbnail_is_small_and_cached(
+    hass: HomeAssistant, setup_entry, hass_client_no_auth
+) -> None:
+    """A tile is a downscaled JPEG, far smaller than the original, and cached."""
+    from PIL import Image
+
+    original = _make_photo(2400, 1800)
+
+    folder = await media_source.async_browse_media(
+        hass, f"media-source://s3_media/{setup_entry.entry_id}|{FOLDER}"
+    )
+    url = folder.children[0].thumbnail
+
+    bucket = hass.data[DOMAIN][setup_entry.entry_id]
+    client = await hass_client_no_auth()
+
+    with (
+        patch.object(
+            bucket._client, "open_object", lambda key, range=None: FakeStream(original)
+        ),
+        patch.object(
+            bucket._client,
+            "get_object",
+            lambda key, range=None: (
+                original,
+                "binary/octet-stream",
+                None,
+                len(original),
+            ),
+        ),
+    ):
+        response = await client.get(url)
+        body = await response.read()
+
+    assert response.status == 200
+    assert response.headers["Content-Type"] == "image/jpeg"
+    assert "max-age" in response.headers["Cache-Control"]
+    with Image.open(BytesIO(body)) as image:
+        assert max(image.size) == 512
+    assert len(body) < len(original) / 5
+
+    # Served from the on-disk cache the second time: the store is not touched.
+    def explode(*args, **kwargs):
+        raise AssertionError("thumbnail should have come from the cache")
+
+    with (
+        patch.object(bucket._client, "open_object", explode),
+        patch.object(bucket._client, "get_object", explode),
+    ):
+        again = await client.get(url)
+        assert again.status == 200
+        assert await again.read() == body
+
+
+async def test_thumbnail_returns_304_when_unchanged(
+    hass: HomeAssistant, setup_entry, hass_client_no_auth
+) -> None:
+    """A browser that already has the tile gets a 304, not the bytes again."""
+    original = _make_photo(800, 600)
+
+    folder = await media_source.async_browse_media(
+        hass, f"media-source://s3_media/{setup_entry.entry_id}|{FOLDER}"
+    )
+    url = folder.children[0].thumbnail
+    bucket = hass.data[DOMAIN][setup_entry.entry_id]
+    client = await hass_client_no_auth()
+
+    with (
+        patch.object(
+            bucket._client, "open_object", lambda key, range=None: FakeStream(original)
+        ),
+        patch.object(
+            bucket._client,
+            "get_object",
+            lambda key, range=None: (
+                original,
+                "binary/octet-stream",
+                None,
+                len(original),
+            ),
+        ),
+    ):
+        first = await client.get(url)
+        etag = first.headers["ETag"]
+
+        second = await client.get(url, headers={"If-None-Match": etag})
+
+    assert second.status == 304
+    assert await second.read() == b""
+
+
+async def test_media_returns_304_when_unchanged(
+    hass: HomeAssistant, setup_entry, hass_client_no_auth
+) -> None:
+    """The full-size route also answers conditional requests."""
+    uri = f"media-source://s3_media/{setup_entry.entry_id}|{PHOTO}"
+    resolved = await media_source.async_resolve_media(hass, uri, None)
+
+    client = await hass_client_no_auth()
+    first = await client.get(resolved.url)
+    assert first.status == 200
+    etag = first.headers["ETag"]
+
+    second = await client.get(resolved.url, headers={"If-None-Match": etag})
+    assert second.status == 304
+    assert await second.read() == b""

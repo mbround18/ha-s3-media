@@ -6,6 +6,7 @@ released), so every call here hops onto Home Assistant's executor.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
@@ -46,13 +47,46 @@ except ImportError as err:  # pragma: no cover - depends on the installed wheel
         "the S3 Media README for prebuilt wheels."
     ) from err
 
-__all__ = ["S3Bucket", "S3MediaError", "S3Object", "normalize_prefix"]
+__all__ = ["S3Bucket", "S3MediaError", "S3Object", "S3Stream", "normalize_prefix"]
 
 
 def normalize_prefix(prefix: str | None) -> str:
     """Return a prefix that is either empty or ends with exactly one slash."""
     cleaned = (prefix or "").strip().strip("/")
     return f"{cleaned}/" if cleaned else ""
+
+
+class S3Stream:
+    """An open GET, read a chunk at a time off Home Assistant's executor.
+
+    One HTTP request covers the whole object, so a large file costs a single
+    round trip to the store rather than one per chunk.
+    """
+
+    def __init__(self, hass: HomeAssistant, native: Any) -> None:
+        """Wrap the Rust stream handle."""
+        self.hass = hass
+        self._native = native
+        self.content_type: str | None = native.content_type
+        self.content_range: str | None = native.content_range
+        self.content_length: int = native.content_length
+        self.etag: str | None = native.etag
+        self.last_modified: float | None = native.last_modified
+
+    async def read_chunk(self) -> bytes | None:
+        """The next piece of the body, or None at the end."""
+        return await self.hass.async_add_executor_job(self._native.next_chunk)
+
+    async def close(self) -> None:
+        """Release the connection without draining the rest."""
+        await self.hass.async_add_executor_job(self._native.close)
+
+    async def read_all(self) -> bytes:
+        """Drain the whole body. Only for objects known to be small."""
+        parts: list[bytes] = []
+        while (chunk := await self.read_chunk()) is not None:
+            parts.append(chunk)
+        return b"".join(parts)
 
 
 @dataclass(slots=True)
@@ -108,6 +142,10 @@ class S3Bucket:
         self.use_proxy: bool = options.get(
             CONF_USE_PROXY, bool(data.get(CONF_ENDPOINT_URL))
         )
+
+        # Generating thumbnails decodes images; without a bound, opening a
+        # folder would hand the executor one job per tile at once.
+        self.thumbnail_semaphore = asyncio.Semaphore(4)
 
         self._client = S3MediaClient(
             self.bucket,
@@ -190,6 +228,13 @@ class S3Bucket:
         return await self.hass.async_add_executor_job(
             self._client.head_object, f"{self.root_prefix}{path}"
         )
+
+    async def async_open(self, path: str, http_range: str | None = None) -> S3Stream:
+        """Start a GET and return a stream over the body."""
+        native = await self.hass.async_add_executor_job(
+            self._client.open_object, f"{self.root_prefix}{path}", http_range
+        )
+        return S3Stream(self.hass, native)
 
     async def async_get(
         self, path: str, http_range: str | None = None

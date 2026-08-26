@@ -1384,7 +1384,7 @@ wheels = [
 
 [[package]]
 name = "ha-s3-media-core"
-version = "0.0.4"
+version = "0.0.5"
 source = { editable = "rust" }
 
 [[package]]

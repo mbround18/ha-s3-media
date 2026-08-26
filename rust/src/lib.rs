@@ -32,6 +32,69 @@ fn s3_err<E: std::fmt::Display>(err: E) -> PyErr {
 /// `(body, content_type, content_range, content_length)` from a ranged GET.
 type ObjectBody = (Vec<u8>, Option<String>, Option<String>, i64);
 
+/// An open GET whose body is pulled a chunk at a time.
+///
+/// One HTTP request stays open for the whole object, so serving a large file
+/// costs a single round trip rather than one per chunk. Each `next_chunk`
+/// releases the GIL while it waits.
+#[pyclass(module = "ha_s3_media_core")]
+pub struct ObjectStream {
+    runtime: Arc<Runtime>,
+    body: Option<aws_sdk_s3::primitives::ByteStream>,
+    #[pyo3(get)]
+    content_type: Option<String>,
+    #[pyo3(get)]
+    content_range: Option<String>,
+    #[pyo3(get)]
+    content_length: i64,
+    #[pyo3(get)]
+    etag: Option<String>,
+    #[pyo3(get)]
+    last_modified: Option<f64>,
+}
+
+#[pymethods]
+impl ObjectStream {
+    /// The next piece of the body, or None once the object is exhausted.
+    fn next_chunk(&mut self, py: Python<'_>) -> PyResult<Option<Vec<u8>>> {
+        let Some(body) = self.body.as_mut() else {
+            return Ok(None);
+        };
+
+        let chunk = py.detach(|| {
+            self.runtime
+                .block_on(async { body.try_next().await.map_err(s3_err) })
+        })?;
+
+        match chunk {
+            Some(bytes) => Ok(Some(bytes.to_vec())),
+            None => {
+                self.body = None;
+                Ok(None)
+            }
+        }
+    }
+
+    /// Release the connection without draining the rest of the body.
+    fn close(&mut self) {
+        self.body = None;
+    }
+
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __exit__(
+        &mut self,
+        _exc_type: Bound<'_, PyAny>,
+        _exc_value: Bound<'_, PyAny>,
+        _traceback: Bound<'_, PyAny>,
+    ) -> bool {
+        self.close();
+        false
+    }
+}
+
 /// A configured, reusable client for one bucket.
 #[pyclass(module = "ha_s3_media_core", frozen)]
 pub struct S3MediaClient {
@@ -303,6 +366,41 @@ impl S3MediaClient {
         Ok(dict)
     }
 
+    /// Start a GET and hand back a stream over its body.
+    ///
+    /// Preferred over `get_object` for anything large: the body is delivered
+    /// incrementally instead of being collected into one allocation.
+    #[pyo3(signature = (key, range = None))]
+    fn open_object(
+        &self,
+        py: Python<'_>,
+        key: String,
+        range: Option<String>,
+    ) -> PyResult<ObjectStream> {
+        let out = py.detach(|| {
+            self.runtime.block_on(async {
+                let mut req = self.client.get_object().bucket(&self.bucket).key(&key);
+                if let Some(range) = range.clone() {
+                    req = req.range(range);
+                }
+                req.send().await.map_err(|e| s3_err(e.into_service_error()))
+            })
+        })?;
+
+        Ok(ObjectStream {
+            runtime: Arc::clone(&self.runtime),
+            content_type: out.content_type().map(str::to_owned),
+            content_range: out.content_range().map(str::to_owned),
+            content_length: out.content_length().unwrap_or(0),
+            etag: out.e_tag().map(|t| t.trim_matches('"').to_owned()),
+            last_modified: out
+                .last_modified()
+                .and_then(|t| t.to_millis().ok())
+                .map(|ms| ms as f64 / 1000.0),
+            body: Some(out.body),
+        })
+    }
+
     /// Fetch an object's bytes, optionally honouring an HTTP `Range` header.
     ///
     /// Returns `(body, content_type, content_range, content_length)`. Used by
@@ -347,5 +445,6 @@ fn ha_s3_media_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("S3MediaError", m.py().get_type::<S3MediaError>())?;
     m.add_class::<S3MediaClient>()?;
+    m.add_class::<ObjectStream>()?;
     Ok(())
 }

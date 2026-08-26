@@ -27,6 +27,7 @@ from .const import (
     MEDIA_TYPE_PHOTO,
     MEDIA_TYPE_VIDEO,
     PROXY_URL_FORMAT,
+    THUMBNAIL_URL_FORMAT,
     VIDEO_EXTENSIONS,
 )
 
@@ -213,10 +214,14 @@ class S3MediaSource(MediaSource):
             )
             for obj in objects
         ]
-        thumbnails = await self._async_thumbnails(
+        thumbnails = self._thumbnails(
             bucket,
             entry_id,
-            [path for _obj, info, path in entries if info[1] is MediaClass.IMAGE],  # type: ignore[index]
+            {
+                path: obj.etag or str(obj.last_modified or "")
+                for obj, info, path in entries
+                if info[1] is MediaClass.IMAGE  # type: ignore[index]
+            },
         )
 
         for obj, info, child_path in entries:
@@ -265,36 +270,36 @@ class S3MediaSource(MediaSource):
             title=path.rsplit("/", 1)[-1],
             can_play=True,
             can_expand=False,
-            thumbnail=(await self._async_thumbnails(bucket, entry_id, [path])).get(path)
-            if media_class is MediaClass.IMAGE
-            else None,
+            thumbnail=(
+                self._thumbnails(bucket, entry_id, {path: ""}).get(path)
+                if media_class is MediaClass.IMAGE
+                else None
+            ),
         )
 
-    async def _async_thumbnails(
-        self, bucket: S3Bucket, entry_id: str, paths: list[str]
+    def _thumbnails(
+        self, bucket: S3Bucket, entry_id: str, versions: dict[str, str]
     ) -> dict[str, str]:
         """Map image paths to preview URLs.
 
-        Images are their own thumbnails. Proxy mode signs paths locally; direct
-        mode presigns the whole folder in a single call rather than one
-        round-trip to the executor per file.
+        Thumbnails always go through Home Assistant, even when the browser
+        could reach the store directly: the whole point is to send a small
+        generated JPEG rather than a multi-megabyte original.
+
+        The object's ETag rides along in the URL so a preview is only ever
+        reused for the bytes it was made from, and a replaced photo gets a new
+        URL rather than a stale cached tile.
         """
-        if not bucket.thumbnails or not paths:
+        if not bucket.thumbnails or not versions:
             return {}
 
-        try:
-            if bucket.use_proxy:
-                return {
-                    path: async_sign_path(
-                        self.hass,
-                        PROXY_URL_FORMAT.format(entry_id=entry_id, path=path),
-                        bucket.url_expiry_timedelta,
-                    )
-                    for path in paths
-                }
-            urls = await bucket.async_presign_many(paths)
-        except S3MediaError as err:
-            _LOGGER.debug("No thumbnails for %s: %s", entry_id, err)
-            return {}
-
-        return dict(zip(paths, urls, strict=False))
+        return {
+            path: async_sign_path(
+                self.hass,
+                THUMBNAIL_URL_FORMAT.format(
+                    entry_id=entry_id, path=path, version=version
+                ),
+                bucket.url_expiry_timedelta,
+            )
+            for path, version in versions.items()
+        }
