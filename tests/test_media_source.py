@@ -191,3 +191,30 @@ async def test_proxy_view_honours_range(
     assert response.status == 206
     assert await response.read() == PHOTO_BYTES[:10]
     assert response.headers["Content-Range"] == f"bytes 0-9/{len(PHOTO_BYTES)}"
+
+
+async def test_proxy_view_serves_a_large_photo(
+    hass: HomeAssistant, setup_entry, hass_client_no_auth
+) -> None:
+    """A realistically sized phone photo comes back whole.
+
+    Everything else here uses a few KB. Real photos are several MB, and the view
+    buffers the whole object, so this checks nothing truncates or times out.
+    """
+    big = b"\xff\xd8\xff\xe0" + b"P" * (8 * 1024 * 1024)
+
+    def big_get(key, range=None):  # mirrors the Rust signature
+        return (big, "binary/octet-stream", None, len(big))
+
+    uri = f"media-source://s3_media/{setup_entry.entry_id}|{PHOTO}"
+    resolved = await media_source.async_resolve_media(hass, uri, None)
+
+    bucket = hass.data[DOMAIN][setup_entry.entry_id]
+    with patch.object(bucket._client, "get_object", big_get):
+        client = await hass_client_no_auth()
+        response = await client.get(resolved.url)
+        body = await response.read()
+
+    assert response.status == 200
+    assert len(body) == len(big)
+    assert response.headers["Content-Type"] == "image/jpeg"
