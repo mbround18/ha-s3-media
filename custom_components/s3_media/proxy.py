@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Any
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.storage import STORAGE_DIR
 
+from . import cache
 from .const import DOMAIN, IMAGE_EXTENSIONS, MIME_TYPES
 from .thumbnail import EXIF_PROBE_BYTES, downscale, exif_thumbnail
 
@@ -37,8 +37,6 @@ CHUNK_SIZE = 256 * 1024
 # Objects are addressed by a key that includes their ETag, so a cached copy can
 # never be stale: replacing the object changes the URL.
 CACHE_CONTROL = "private, max-age=604800, immutable"
-
-THUMBNAIL_CACHE_DIR = "s3_media_thumbnails"
 
 
 @callback
@@ -178,13 +176,6 @@ class S3MediaThumbnailView(HomeAssistantView):
         """Keep a reference to hass for entry lookups."""
         self.hass = hass
 
-    def cache_path(self, entry_id: str, path: str, version: str) -> Path:
-        """Where a thumbnail for this exact version of an object lives."""
-        digest = hashlib.sha256(f"{entry_id}\0{path}\0{version}".encode()).hexdigest()
-        return Path(
-            self.hass.config.path(STORAGE_DIR, THUMBNAIL_CACHE_DIR, f"{digest}.jpg")
-        )
-
     async def get(
         self, request: web.Request, entry_id: str, path: str
     ) -> web.StreamResponse:
@@ -205,19 +196,19 @@ class S3MediaThumbnailView(HomeAssistantView):
         if request.headers.get("If-None-Match") == etag:
             return web.Response(status=304, headers={"ETag": etag})
 
-        cached = self.cache_path(entry_id, path, version)
-        thumbnail = await self.hass.async_add_executor_job(_read_cache, cached)
+        cached = cache.thumbnail_path(self.hass, entry_id, path, version)
+        thumbnail = await self.hass.async_add_executor_job(cache.read, cached)
 
         if thumbnail is None:
             async with bucket.thumbnail_semaphore:
                 # Re-check: another request may have generated it while waiting.
-                thumbnail = await self.hass.async_add_executor_job(_read_cache, cached)
+                thumbnail = await self.hass.async_add_executor_job(cache.read, cached)
                 if thumbnail is None:
                     thumbnail = await self._async_generate(bucket, path)
                     if thumbnail is None:
                         raise web.HTTPNotFound
                     await self.hass.async_add_executor_job(
-                        _write_cache, cached, thumbnail
+                        cache.write, cached, thumbnail
                     )
 
         return web.Response(
@@ -255,22 +246,3 @@ class S3MediaThumbnailView(HomeAssistantView):
             return None
 
         return await self.hass.async_add_executor_job(downscale, original)
-
-
-def _read_cache(path: Path) -> bytes | None:
-    """Read a cached thumbnail, or None if it isn't there."""
-    try:
-        return path.read_bytes()
-    except OSError:
-        return None
-
-
-def _write_cache(path: Path, data: bytes) -> None:
-    """Write a thumbnail, atomically so a partial file is never served."""
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".part")
-        temporary.write_bytes(data)
-        temporary.replace(path)
-    except OSError as err:
-        _LOGGER.debug("Could not cache thumbnail at %s: %s", path, err)

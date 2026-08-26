@@ -128,6 +128,7 @@ class S3Bucket:
         self.hass = hass
         self.title = title
         self.bucket = data[CONF_BUCKET]
+        self.endpoint_url: str = data.get(CONF_ENDPOINT_URL) or ""
         self.root_prefix = normalize_prefix(data.get(CONF_PREFIX))
         self.url_expiry: int = options.get(CONF_URL_EXPIRY, DEFAULT_URL_EXPIRY)
         self.max_items: int = options.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS)

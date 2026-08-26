@@ -438,3 +438,63 @@ async def test_media_returns_304_when_unchanged(
     second = await client.get(resolved.url, headers={"If-None-Match": etag})
     assert second.status == 304
     assert await second.read() == b""
+
+
+async def test_clear_cache_button_empties_the_cache(
+    hass: HomeAssistant, setup_entry, hass_client_no_auth
+) -> None:
+    """Pressing the button deletes the cached thumbnails and updates the sensors."""
+    from custom_components.s3_media import cache
+
+    original = _make_photo(800, 600)
+
+    folder = await media_source.async_browse_media(
+        hass, f"media-source://s3_media/{setup_entry.entry_id}|{FOLDER}"
+    )
+    url = folder.children[0].thumbnail
+    bucket = hass.data[DOMAIN][setup_entry.entry_id]
+
+    client = await hass_client_no_auth()
+    with (
+        patch.object(
+            bucket._client, "open_object", lambda key, range=None: FakeStream(original)
+        ),
+        patch.object(
+            bucket._client,
+            "get_object",
+            lambda key, range=None: (
+                original,
+                "binary/octet-stream",
+                None,
+                len(original),
+            ),
+        ),
+    ):
+        assert (await client.get(url)).status == 200
+
+    directory = cache.entry_cache_dir(hass, setup_entry.entry_id)
+    before = await hass.async_add_executor_job(cache.stats, directory)
+    assert before.files == 1
+    assert before.bytes > 0
+
+    await hass.services.async_call(
+        "button",
+        "press",
+        {"entity_id": "button.photos_clear_thumbnail_cache"},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    after = await hass.async_add_executor_job(cache.stats, directory)
+    assert after.files == 0
+    assert hass.states.get("sensor.photos_cached_thumbnails").state == "0"
+
+
+async def test_cache_sensors_exist(hass: HomeAssistant, setup_entry) -> None:
+    """The diagnostic sensors are what make the button's effect visible."""
+    size = hass.states.get("sensor.photos_thumbnail_cache_size")
+    files = hass.states.get("sensor.photos_cached_thumbnails")
+
+    assert size is not None
+    assert files is not None
+    assert files.state == "0"

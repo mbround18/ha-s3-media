@@ -42,7 +42,7 @@ pytestmark = [
 # Big enough to span several proxy chunks, like a real phone photo.
 PHOTO = "Taiwan 2026/20260316_183853.jpg"
 PHOTO_BYTES = b"\xff\xd8\xff\xe0" + bytes(range(256)) * 24000  # ~6 MB
-ENTRY_ID = "01M0XQH8023TBCX4ED1RTD73MT"
+ENTRY_ID = "01LIVEPROXY000000000000000"
 
 
 @pytest.fixture

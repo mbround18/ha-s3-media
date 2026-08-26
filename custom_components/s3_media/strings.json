@@ -63,6 +63,21 @@
       }
     }
   },
+  "entity": {
+    "button": {
+      "clear_thumbnail_cache": {
+        "name": "Clear thumbnail cache"
+      }
+    },
+    "sensor": {
+      "thumbnail_cache_size": {
+        "name": "Thumbnail cache size"
+      },
+      "thumbnail_cache_files": {
+        "name": "Cached thumbnails"
+      }
+    }
+  },
   "selector": {
     "media_types": {
       "options": {

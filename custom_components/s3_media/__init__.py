@@ -9,12 +9,16 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
+from . import cache
 from .client import S3Bucket, S3MediaError
 from .const import DOMAIN
 from .proxy import async_register_proxy_view
+
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,14 +53,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3MediaConfigEntry) -> b
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = bucket
     async_register_proxy_view(hass)
 
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: S3MediaConfigEntry) -> bool:
     """Unload a config entry."""
-    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-    return True
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the entry's cached thumbnails along with the entry itself."""
+    await hass.async_add_executor_job(
+        cache.clear, cache.entry_cache_dir(hass, entry.entry_id)
+    )
 
 
 async def _async_options_updated(

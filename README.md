@@ -20,6 +20,8 @@ The S3 layer is a Rust extension module (`ha-s3-media-core`) built with
   preview in the EXIF header, that is used directly, so a tile costs kilobytes
   rather than megabytes; otherwise the image is downscaled once and cached.
 - **Multiple buckets** — add one config entry per bucket/prefix pair.
+- **Cache controls** — each bucket gets a device with a *Clear thumbnail cache*
+  button and diagnostic sensors for the cache's size and file count.
 - **Two delivery modes** — presigned URLs straight from the object store, or
   streaming through Home Assistant when the endpoint is not reachable from the
   browser (the usual case for a self-hosted RustFS).
@@ -89,6 +91,16 @@ Home Assistant's bandwidth, but it always works, and it passes HTTP `Range`
 requests through so video seeking still works. It is on by default whenever an
 endpoint URL is set.
 
+### Entities
+
+Each bucket appears as a device with:
+
+| Entity | Purpose |
+|---|---|
+| **Clear thumbnail cache** (button) | Deletes this bucket's cached thumbnails. Safe at any time: thumbnails are keyed by the object's ETag, so clearing is about reclaiming disk, never correctness. Automations can press it like any button. |
+| **Thumbnail cache size** (sensor) | Disk used, shown in MB. |
+| **Cached thumbnails** (sensor) | How many previews are stored. |
+
 ### Options
 
 Reachable from the integration's **Configure** button.
@@ -114,6 +126,9 @@ custom_components/s3_media/
   const.py          keys, defaults, extension → mime-type tables
   proxy.py          media and thumbnail views: streaming, caching, Range
   thumbnail.py      EXIF preview extraction and downscaling
+  cache.py          on-disk thumbnail cache, one directory per config entry
+  button.py         clear-cache button
+  sensor.py         diagnostic sensors for cache size and file count
   media_source.py   browse and resolve
   brand/            icon and logo for the HACS/Home Assistant UI
 rust/
@@ -169,8 +184,10 @@ uv run maturin build --release --manifest-path rust/Cargo.toml
 
 - Folders are listed live on every browse; there is no cache. Large buckets
   browse as fast as your endpoint lists them.
-- The thumbnail cache grows without bound and is never pruned. Each entry is a
-  few KB, so a large library is still megabytes, but nothing evicts it.
+- The thumbnail cache has no automatic eviction. It is bounded in practice --
+  entries are a few KB and one per photo you have actually looked at -- and the
+  *Clear thumbnail cache* button empties it on demand, with sensors showing
+  what it is costing. Removing a bucket deletes its cache with it.
 - HEIC, HEIF and TIFF are listed as photos, but most browsers cannot display
   them, so they render as broken tiles. Convert them, or leave them out of the
   prefix you point Home Assistant at.

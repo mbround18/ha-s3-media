@@ -34,6 +34,9 @@ PROXY_URL_FORMAT: Final = "/api/s3_media/{entry_id}/{path}"
 # The version is the object's ETag: it makes a cached thumbnail unambiguous.
 THUMBNAIL_URL_FORMAT: Final = "/api/s3_media_thumb/{entry_id}/{path}?v={version}"
 
+# Thumbnails are cached under one directory per config entry inside .storage.
+THUMBNAIL_CACHE_DIR: Final = "s3_media_thumbnails"
+
 # Which kinds of media a bucket exposes. Selecting only "photo" makes the
 # source behave as a photo album: videos and audio in the same bucket are
 # hidden from the browser entirely.
