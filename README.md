@@ -93,6 +93,7 @@ Reachable from the integration's **Configure** button.
 
 | Option | Default | Notes |
 |---|---|---|
+| Media to show | Photos, Videos, Audio | Pick only Photos to browse a bucket as a photo album; video and audio in it stay hidden. |
 | Stream through Home Assistant | on when an endpoint URL is set | Proxy instead of presigned URLs. |
 | Show image thumbnails | on | Thumbnails are the full image; turn off for folders of large photos. |
 | Show newest files first | on | Otherwise sorted by name. |
@@ -109,7 +110,7 @@ custom_components/s3_media/
   client.py         async wrapper; every Rust call goes via the executor
   config_flow.py    setup, reauth and options flows
   const.py          keys, defaults, extension → mime-type tables
-  proxy.py          proxy view, with HTTP Range passed through to S3
+  proxy.py          proxy view: streams objects in chunks, honours Range
   media_source.py   browse and resolve
   brand/            icon and logo for the HACS/Home Assistant UI
 rust/
@@ -154,6 +155,9 @@ uv run maturin build --release --manifest-path rust/Cargo.toml
 
 - Folders are listed live on every browse; there is no cache. Large buckets
   browse as fast as your endpoint lists them.
+- HEIC, HEIF and TIFF are listed as photos, but most browsers cannot display
+  them, so they render as broken tiles. Convert them, or leave them out of the
+  prefix you point Home Assistant at.
 - Video thumbnails are not generated — that would mean decoding frames server-side.
 - `max_items` truncates rather than paginating; the media browser has no paging UI.
 

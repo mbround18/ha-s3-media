@@ -23,6 +23,9 @@ from .const import (
     DOMAIN,
     IDENTIFIER_SEPARATOR,
     IMAGE_EXTENSIONS,
+    MEDIA_TYPE_AUDIO,
+    MEDIA_TYPE_PHOTO,
+    MEDIA_TYPE_VIDEO,
     PROXY_URL_FORMAT,
     VIDEO_EXTENSIONS,
 )
@@ -30,9 +33,9 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 MEDIA_CLASS_BY_EXTENSION_MAP = (
-    (IMAGE_EXTENSIONS, MediaClass.IMAGE, MediaType.IMAGE),
-    (VIDEO_EXTENSIONS, MediaClass.VIDEO, MediaType.VIDEO),
-    (AUDIO_EXTENSIONS, MediaClass.MUSIC, MediaType.MUSIC),
+    (IMAGE_EXTENSIONS, MediaClass.IMAGE, MediaType.IMAGE, MEDIA_TYPE_PHOTO),
+    (VIDEO_EXTENSIONS, MediaClass.VIDEO, MediaType.VIDEO, MEDIA_TYPE_VIDEO),
+    (AUDIO_EXTENSIONS, MediaClass.MUSIC, MediaType.MUSIC, MEDIA_TYPE_AUDIO),
 )
 
 
@@ -41,11 +44,20 @@ async def async_get_media_source(hass: HomeAssistant) -> S3MediaSource:
     return S3MediaSource(hass)
 
 
-def classify(key: str) -> tuple[str, MediaClass, MediaType] | None:
-    """Return (mime type, media class, media type) for a key, or None if unplayable."""
+def classify(
+    key: str, media_types: set[str] | None = None
+) -> tuple[str, MediaClass, MediaType] | None:
+    """Return (mime type, media class, media type) for a key.
+
+    Returns None when the extension is not media at all, or when its kind is
+    excluded by `media_types` -- the option that lets a bucket be browsed as a
+    photo album even though it also holds video and audio.
+    """
     suffix = PurePosixPath(key).suffix.lower()
-    for extensions, media_class, media_type in MEDIA_CLASS_BY_EXTENSION_MAP:
+    for extensions, media_class, media_type, kind in MEDIA_CLASS_BY_EXTENSION_MAP:
         if (mime_type := extensions.get(suffix)) is not None:
+            if media_types is not None and kind not in media_types:
+                return None
             return mime_type, media_class, media_type
     return None
 
@@ -91,7 +103,7 @@ class S3MediaSource(MediaSource):
         except BrowseError as err:
             raise Unresolvable(str(err)) from err
 
-        if (classified := classify(path)) is None:
+        if (classified := classify(path, bucket.media_types)) is None:
             raise Unresolvable(f"Unsupported media type: {path}")
         mime_type = classified[0]
 
@@ -183,14 +195,22 @@ class S3MediaSource(MediaSource):
             for folder in sorted(listing.folders)
         ]
 
-        objects = [obj for obj in listing.objects if classify(obj.key) is not None]
+        objects = [
+            obj
+            for obj in listing.objects
+            if classify(obj.key, bucket.media_types) is not None
+        ]
         if bucket.newest_first:
             objects.sort(key=lambda obj: obj.last_modified or 0.0, reverse=True)
         else:
             objects.sort(key=lambda obj: obj.key)
 
         entries = [
-            (obj, classify(obj.key), obj.key.removeprefix(bucket.root_prefix))
+            (
+                obj,
+                classify(obj.key, bucket.media_types),
+                obj.key.removeprefix(bucket.root_prefix),
+            )
             for obj in objects
         ]
         thumbnails = await self._async_thumbnails(
@@ -233,7 +253,7 @@ class S3MediaSource(MediaSource):
         self, bucket: S3Bucket, entry_id: str, path: str
     ) -> BrowseMediaSource:
         """Describe a single object."""
-        if (classified := classify(path)) is None:
+        if (classified := classify(path, bucket.media_types)) is None:
             raise BrowseError(f"Unsupported media type: {path}")
         mime_type, media_class, _media_type = classified
 

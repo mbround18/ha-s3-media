@@ -46,6 +46,7 @@
       "init": {
         "title": "S3 Media options",
         "data": {
+          "media_types": "Media to show",
           "use_proxy": "Stream through Home Assistant",
           "thumbnails": "Show image thumbnails",
           "newest_first": "Show newest files first",
@@ -53,10 +54,20 @@
           "max_items": "Maximum files per folder"
         },
         "data_description": {
+          "media_types": "Pick only Photos to browse the bucket as a photo album; anything else in it stays hidden.",
           "use_proxy": "Turn on when the endpoint is not reachable from your browser, as is usual for a self-hosted RustFS on an internal address. Turn off to let the browser fetch from the endpoint directly, which is faster and uses no Home Assistant bandwidth.",
           "thumbnails": "Thumbnails load the full image. Turn this off for folders of large photos.",
           "url_expiry": "How long a generated media link stays valid.",
           "max_items": "Folders larger than this are truncated in the browser."
+        }
+      }
+    },
+    "selector": {
+      "media_types": {
+        "options": {
+          "photo": "Photos",
+          "video": "Videos",
+          "audio": "Audio"
         }
       }
     }

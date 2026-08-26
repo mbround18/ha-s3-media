@@ -21,6 +21,7 @@ from custom_components.s3_media.const import (
     CONF_BUCKET,
     CONF_ENDPOINT_URL,
     CONF_FORCE_PATH_STYLE,
+    CONF_MEDIA_TYPES,
     CONF_REGION,
     CONF_SECRET_ACCESS_KEY,
     CONF_USE_PROXY,
@@ -218,3 +219,51 @@ async def test_proxy_view_serves_a_large_photo(
     assert response.status == 200
     assert len(body) == len(big)
     assert response.headers["Content-Type"] == "image/jpeg"
+
+
+async def test_photo_only_hides_other_media(hass: HomeAssistant) -> None:
+    """Selecting only Photos hides video and audio sitting in the same folder."""
+    assert await async_setup_component(hass, "media_source", {})
+
+    mixed = {
+        "folders": [],
+        "objects": [
+            {"key": k, "size": 10, "last_modified": 1.0, "etag": "e"}
+            for k in (
+                f"{FOLDER}photo.jpg",
+                f"{FOLDER}photo.png",
+                f"{FOLDER}clip.mp4",
+                f"{FOLDER}song.mp3",
+                f"{FOLDER}notes.txt",
+            )
+        ],
+        "next_token": None,
+    }
+
+    class MixedClient(FakeS3Client):
+        def list_folder(self, prefix="", continuation_token=None, page_size=1000):
+            if prefix == "":
+                return {"folders": [FOLDER], "objects": [], "next_token": None}
+            return mixed if prefix == FOLDER else super().list_folder(prefix)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="photos",
+        data=ENTRY_DATA,
+        options={CONF_USE_PROXY: True, CONF_MEDIA_TYPES: ["photo"]},
+        entry_id="01PHOTOONLY0000000000000000",
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.s3_media.client.S3MediaClient", MixedClient):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        folder = await media_source.async_browse_media(
+            hass, f"media-source://s3_media/{entry.entry_id}|{FOLDER}"
+        )
+
+    assert sorted(child.title for child in folder.children) == [
+        "photo.jpg",
+        "photo.png",
+    ]

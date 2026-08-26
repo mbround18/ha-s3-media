@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ha-s3-media-core"
-version = "0.0.3"
+version = "0.0.4"
 description = "Rust/PyO3 S3 access layer for the Home Assistant S3 Media integration"
 readme = "README.md"
 requires-python = ">=3.12"

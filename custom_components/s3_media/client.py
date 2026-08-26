@@ -19,6 +19,7 @@ from .const import (
     CONF_ENDPOINT_URL,
     CONF_FORCE_PATH_STYLE,
     CONF_MAX_ITEMS,
+    CONF_MEDIA_TYPES,
     CONF_NEWEST_FIRST,
     CONF_PREFIX,
     CONF_REGION,
@@ -28,6 +29,7 @@ from .const import (
     CONF_URL_EXPIRY,
     CONF_USE_PROXY,
     DEFAULT_MAX_ITEMS,
+    DEFAULT_MEDIA_TYPES,
     DEFAULT_NEWEST_FIRST,
     DEFAULT_THUMBNAILS,
     DEFAULT_URL_EXPIRY,
@@ -100,6 +102,9 @@ class S3Bucket:
         # Presigned URLs point at the S3 endpoint itself. For self-hosted
         # endpoints (RustFS and friends) that address is often unreachable from
         # the browser, so default to proxying through Home Assistant instead.
+        self.media_types: set[str] = set(
+            options.get(CONF_MEDIA_TYPES) or DEFAULT_MEDIA_TYPES
+        )
         self.use_proxy: bool = options.get(
             CONF_USE_PROXY, bool(data.get(CONF_ENDPOINT_URL))
         )

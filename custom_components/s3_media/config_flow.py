@@ -19,6 +19,9 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -31,6 +34,7 @@ from .const import (
     CONF_ENDPOINT_URL,
     CONF_FORCE_PATH_STYLE,
     CONF_MAX_ITEMS,
+    CONF_MEDIA_TYPES,
     CONF_NEWEST_FIRST,
     CONF_PREFIX,
     CONF_REGION,
@@ -39,6 +43,7 @@ from .const import (
     CONF_URL_EXPIRY,
     CONF_USE_PROXY,
     DEFAULT_MAX_ITEMS,
+    DEFAULT_MEDIA_TYPES,
     DEFAULT_NEWEST_FIRST,
     DEFAULT_REGION,
     DEFAULT_THUMBNAILS,
@@ -201,6 +206,17 @@ class S3MediaOptionsFlow(OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Required(
+                    CONF_MEDIA_TYPES,
+                    default=list(options.get(CONF_MEDIA_TYPES) or DEFAULT_MEDIA_TYPES),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(DEFAULT_MEDIA_TYPES),
+                        multiple=True,
+                        mode=SelectSelectorMode.LIST,
+                        translation_key=CONF_MEDIA_TYPES,
+                    )
+                ),
+                vol.Required(
                     CONF_USE_PROXY,
                     default=options.get(CONF_USE_PROXY, has_endpoint),
                 ): BooleanSelector(),
@@ -226,6 +242,7 @@ class S3MediaOptionsFlow(OptionsFlow):
                 ),
                 vol.Required(
                     CONF_MAX_ITEMS,
+                    CONF_MEDIA_TYPES,
                     default=options.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS),
                 ): NumberSelector(
                     NumberSelectorConfig(

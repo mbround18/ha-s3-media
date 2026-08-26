@@ -21,6 +21,7 @@ CONF_MAX_ITEMS: Final = "max_items"
 CONF_NEWEST_FIRST: Final = "newest_first"
 CONF_THUMBNAILS: Final = "thumbnails"
 CONF_USE_PROXY: Final = "use_proxy"
+CONF_MEDIA_TYPES: Final = "media_types"
 
 DEFAULT_REGION: Final = "us-east-1"
 DEFAULT_URL_EXPIRY: Final = 3600
@@ -30,6 +31,14 @@ DEFAULT_THUMBNAILS: Final = True
 
 # Path of the proxy view, formatted with the config entry id.
 PROXY_URL_FORMAT: Final = "/api/s3_media/{entry_id}/{path}"
+
+# Which kinds of media a bucket exposes. Selecting only "photo" makes the
+# source behave as a photo album: videos and audio in the same bucket are
+# hidden from the browser entirely.
+MEDIA_TYPE_PHOTO: Final = "photo"
+MEDIA_TYPE_VIDEO: Final = "video"
+MEDIA_TYPE_AUDIO: Final = "audio"
+DEFAULT_MEDIA_TYPES: Final = [MEDIA_TYPE_PHOTO, MEDIA_TYPE_VIDEO, MEDIA_TYPE_AUDIO]
 
 # Keys never contain "|", so it is a safe separator between the config entry
 # id and the object path inside a media source identifier.
