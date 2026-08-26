@@ -79,7 +79,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # The integration can release without the Rust core changing, in which
+      # case its version is already on PyPI. Skip it rather than failing.
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

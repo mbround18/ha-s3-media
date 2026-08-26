@@ -61,14 +61,14 @@
           "max_items": "Folders larger than this are truncated in the browser."
         }
       }
-    },
-    "selector": {
-      "media_types": {
-        "options": {
-          "photo": "Photos",
-          "video": "Videos",
-          "audio": "Audio"
-        }
+    }
+  },
+  "selector": {
+    "media_types": {
+      "options": {
+        "photo": "Photos",
+        "video": "Videos",
+        "audio": "Audio"
       }
     }
   }
