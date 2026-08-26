@@ -10,13 +10,14 @@ this view instead, and Home Assistant streams the object through.
 from __future__ import annotations
 
 import logging
+from pathlib import PurePosixPath
 from typing import Any
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN
+from .const import DOMAIN, MIME_TYPES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,9 +64,16 @@ class S3MediaProxyView(HomeAssistantView):
             _LOGGER.debug("Proxy fetch failed for %s: %s", path, err)
             raise web.HTTPNotFound from err
 
+        # Prefer the extension over whatever the store reported. See MIME_TYPES.
+        resolved_type = (
+            MIME_TYPES.get(PurePosixPath(path).suffix.lower())
+            or content_type
+            or "application/octet-stream"
+        )
+
         headers = {
             "Accept-Ranges": "bytes",
-            "Content-Type": content_type or "application/octet-stream",
+            "Content-Type": resolved_type,
         }
         if content_range:
             headers["Content-Range"] = content_range

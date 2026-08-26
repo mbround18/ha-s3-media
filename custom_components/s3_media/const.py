@@ -64,6 +64,11 @@ VIDEO_EXTENSIONS: Final = {
     ".m3u8": "application/vnd.apple.mpegurl",
 }
 
+# Every extension the integration will serve, mapped to the mime type to send.
+# The object store's own content type is not trusted: bulk-uploaded photos
+# routinely carry "binary/octet-stream", and Home Assistant sets
+# X-Content-Type-Options: nosniff, so a wrong type means the browser refuses to
+# render the image at all.
 AUDIO_EXTENSIONS: Final = {
     ".mp3": "audio/mpeg",
     ".m4a": "audio/mp4",
@@ -75,3 +80,6 @@ AUDIO_EXTENSIONS: Final = {
     ".wav": "audio/wav",
     ".wma": "audio/x-ms-wma",
 }
+
+
+MIME_TYPES: Final = {**IMAGE_EXTENSIONS, **VIDEO_EXTENSIONS, **AUDIO_EXTENSIONS}
