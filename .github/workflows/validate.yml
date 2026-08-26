@@ -36,6 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
       - run: uv sync --all-groups
       - run: uv run ruff check custom_components tests
       - run: uv run ruff format --check custom_components tests

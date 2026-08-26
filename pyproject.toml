@@ -7,7 +7,10 @@
 name = "ha-s3-media-dev"
 version = "0.1.0"
 description = "Development environment for the Home Assistant S3 Media integration"
-requires-python = ">=3.12"
+# Home Assistant 2026.8 requires 3.14.2+. Pinning the dev/CI floor here means
+# tests run against the Home Assistant release users actually have, rather than
+# whatever older version an older interpreter happens to resolve.
+requires-python = ">=3.14"
 dependencies = [
   "homeassistant>=2024.12.0",
   "ha-s3-media-core",
