@@ -16,3 +16,6 @@ build/
 
 # Home Assistant dev instance
 /config/
+
+# Stray lockfile from running uv inside the crate directory
+/rust/uv.lock
